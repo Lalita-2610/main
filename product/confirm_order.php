@@ -4,8 +4,8 @@ session_start(); // เริ่มต้น session
 // เชื่อมต่อฐานข้อมูล
 include("connectdb.php");
 
-// ตรวจสอบ CSRF token
-if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+// ตรวจสอบ CSRF Token
+if ($_POST['csrf_token'] !== $_SESSION['csrf_token']) {
     die("CSRF token validation failed.");
 }
 
@@ -15,69 +15,56 @@ if (!isset($_SESSION['uid'])) {
     exit();
 }
 
-// ตรวจสอบข้อมูลสินค้าที่ส่งมาจากฟอร์ม
-if (!isset($_POST['pid']) || !isset($_POST['qty'])) {
-    die("Invalid order data.");
-}
-
-// ดึงข้อมูลสินค้าที่ถูกสั่งซื้อ
-$pids = $_POST['pid'];
-$quantities = $_POST['qty'];
-$uid = $_SESSION['uid']; // ID ของผู้ใช้ที่ล็อกอิน
-
-// บันทึกข้อมูลในตารางคำสั่งซื้อ
-$sql_order = "INSERT INTO orders (ototal, odate, id, status_id) VALUES (?, NOW(), ?, ?)";
-$stmt_order = $conn->prepare($sql_order);
+// ดึงข้อมูลจากตะกร้า
+$cart = isset($_SESSION['cart']) ? $_SESSION['cart'] : [];
+$products = getProducts($conn, $cart); // ฟังก์ชันที่คุณมีอยู่เพื่อดึงข้อมูลผลิตภัณฑ์
 
 // คำนวณยอดรวม
 $total = 0;
-foreach ($pids as $index => $pid) {
-    $quantity = $quantities[$index];
-
-    // ดึงข้อมูลราคาสินค้า
-    $sql_price = "SELECT p_price FROM product WHERE p_id = ?";
-    $stmt_price = $conn->prepare($sql_price);
-    $stmt_price->bind_param('i', $pid);
-    $stmt_price->execute();
-    $result = $stmt_price->get_result();
-    $product = $result->fetch_assoc();
-
-    if ($product) {
-        $price = $product['p_price'];
-        $subtotal = $price * $quantity;
-        $total += $subtotal;
-    }
+foreach ($products as $pid => $product) {
+    $subtotal = $product['p_price'] * $cart[$pid];
+    $total += $subtotal;
 }
 
-// สถานะคำสั่งซื้อ (เช่น 1 สำหรับกำลังดำเนินการ)
-$status_id = 1;
+// ข้อมูลลูกค้า
+$name = $_POST['name'];
+$lastname = $_POST['lastname'];
+$phone = $_POST['phone'];
+$address = $_POST['address'];
 
-if ($stmt_order) {
-    $stmt_order->bind_param('dii', $total, $uid, $status_id);
-    $stmt_order->execute();
-    $oid = $stmt_order->insert_id; // รับ oid ของคำสั่งซื้อที่เพิ่งสร้าง
+// บันทึกข้อมูลคำสั่งซื้อ
+$sqlOrder = "INSERT INTO orders (ototal, odate, id, status_id, customer_name, customer_address) VALUES (?, NOW(), ?, ?, ?, ?)";
+$stmtOrder = $conn->prepare($sqlOrder);
+$status_id = 1; // ค่าที่กำหนดสำหรับสถานะคำสั่งซื้อ (เช่น รอการชำระเงิน)
+$stmtOrder->bind_param("diiss", $total, $_SESSION['uid'], $status_id, $name . ' ' . $lastname, $address);
 
-    // บันทึกข้อมูลในตารางรายละเอียดคำสั่งซื้อ
-    $sql_order_details = "INSERT INTO order_details (oid, pid, item, status_id) VALUES (?, ?, ?, ?)";
-    $stmt_order_details = $conn->prepare($sql_order_details);
+if ($stmtOrder->execute()) {
+    $oid = $stmtOrder->insert_id; // ดึง ID ของคำสั่งซื้อล่าสุด
 
-    if ($stmt_order_details) {
-        foreach ($pids as $index => $pid) {
-            $quantity = $quantities[$index];
-            $item = $quantity; // หรือจะเก็บรายละเอียดอื่นๆ ตามต้องการ
-            $stmt_order_details->bind_param('iiis', $oid, $pid, $item, $status_id);
-            $stmt_order_details->execute();
-        }
-        $stmt_order_details->close();
+    // บันทึกข้อมูลรายละเอียดคำสั่งซื้อ
+    $sqlOrderDetail = "INSERT INTO orders_detail (oid, pid, item, status_id) VALUES (?, ?, ?, ?)";
+    $stmtDetail = $conn->prepare($sqlOrderDetail);
+    
+    foreach ($cart as $pid => $qty) {
+        $item = htmlspecialchars($products[$pid]['p_name'], ENT_QUOTES, 'UTF-8');
+        $status_detail_id = 1; // ค่าที่กำหนดสำหรับสถานะรายละเอียดคำสั่งซื้อ
+        $stmtDetail->bind_param("iisi", $oid, $pid, $item, $status_detail_id);
+        $stmtDetail->execute();
     }
-    $stmt_order->close();
 
-    // เคลียร์ตะกร้าสินค้า
+    $stmtDetail->close();
+    $stmtOrder->close();
+
+    // เคลียร์ตะกร้าหลังจากสั่งซื้อ
     unset($_SESSION['cart']);
-    // เปลี่ยนไปยังหน้ายืนยันคำสั่งซื้อ
-    header("Location: order_confirmation.php?oid=" . $oid);
-    exit();
+    
+    // แสดงข้อความยืนยันการสั่งซื้อ
+    echo "<h2>คำสั่งซื้อของคุณได้รับการบันทึกแล้ว</h2>";
+    echo "<p>ยอดรวม: " . number_format($total, 2) . " บาท</p>";
+    echo "<p><a href='index.php'>กลับไปยังหน้าแรก</a></p>";
 } else {
-    die("Order creation failed.");
+    echo "เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ: " . $conn->error;
 }
+
+$conn->close(); // ปิดการเชื่อมต่อฐานข้อมูล
 ?>
