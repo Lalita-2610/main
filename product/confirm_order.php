@@ -94,15 +94,16 @@ try {
     }
 
     // Insert into orders table
-    $sql_order = "INSERT INTO orders (ototal, odate, id, status_id, customer_name) VALUES (?, NOW(), ?, ?, ?)";
+    $sql_order = "INSERT INTO orders (ototal, odate, id, status_id, customer_name, customer_address) VALUES (?, NOW(), ?, ?, ?, ?)";
     $stmt_order = $conn->prepare($sql_order);
     if (!$stmt_order) {
         throw new Exception("Error while creating order: " . $conn->error);
     }
 
-    // กำหนดค่าเริ่มต้นสำหรับ customer_name
+    // กำหนดค่าเริ่มต้นสำหรับ customer_name และ customer_address
     $customer_name = "unknown"; // หรือสามารถใช้ชื่ออื่นๆ ตามที่ต้องการ
-    $stmt_order->bind_param("diis", $total, $user_id, $status_id, $customer_name);
+    $customer_address = "unknown address"; // หรือสามารถใช้ที่อยู่อื่นๆ ตามที่ต้องการ
+    $stmt_order->bind_param("diiss", $total, $user_id, $status_id, $customer_name, $customer_address);
     if (!$stmt_order->execute()) {
         throw new Exception("Error while creating order: " . $stmt_order->error);
     }
@@ -192,7 +193,7 @@ try {
         <div class="container mt-5 text-center">
             <h2 class="mb-4 text-danger">เกิดข้อผิดพลาดในการสั่งซื้อ</h2>
             <p>ขออภัยในความไม่สะดวก กรุณาลองใหม่อีกครั้งหรือติดต่อฝ่ายสนับสนุนลูกค้า.</p>
-            <a href="../checkout/indexcheckout.php" class="btn btn-warning mt-3">
+            <a href="indexcheckout.php" class="btn btn-warning mt-3">
                 <i class="bi bi-arrow-left"></i> กลับไปแก้ไขตะกร้า
             </a>
             <a href="indexproduct.php" class="btn btn-primary mt-3">
