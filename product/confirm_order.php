@@ -13,67 +13,51 @@ if (!isset($_SESSION['uid'])) {
 // ตรวจสอบ CSRF Token
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-        die("CSRF token validation failed");
+        die("CSRF token mismatch.");
     }
 
     // ดึงข้อมูลจากฟอร์ม
-    $uid = $_SESSION['uid'];
-    $pids = $_POST['pid'];
-    $qtys = $_POST['qty'];
-    $phone = $_POST['phone'];
-    $email = $_POST['email'] ?? ''; // อาจจะมีหรือไม่มี
-    $save_info = isset($_POST['save_info']) ? 1 : 0;
+    $customer_name = isset($_POST['name']) ? $_POST['name'] : '';
+    $customer_address = isset($_POST['address']) ? $_POST['address'] : '';
+    $total = isset($_POST['total']) ? $_POST['total'] : 0; // ยอดรวม
 
-    // ตรวจสอบข้อมูลที่ส่งมา
-    if (empty($pids) || empty($qtys) || count($pids) !== count($qtys)) {
-        die("Invalid order data");
-    }
+    // สร้างรายการคำสั่งซื้อ
+    $stmt = $conn->prepare("INSERT INTO orders (ototal, odate, id, status_id, customer_name, customer_address) VALUES (?, NOW(), ?, ?, ?, ?)");
+    $userId = $_SESSION['uid']; // id ของผู้ใช้ที่ล็อกอิน
+    $status_id = 1; // สถานะเริ่มต้น (ปรับได้ตามต้องการ)
 
-    // คำนวณยอดรวม
-    $total = 0;
-    foreach ($pids as $key => $pid) {
-        // สมมุติว่าให้ไปดึงราคาสินค้าโดยใช้ $pid
-        $stmt = $conn->prepare("SELECT p_price FROM product WHERE p_id = ?");
-        $stmt->bind_param("i", $pid);
+    if ($stmt) {
+        $stmt->bind_param("diiss", $total, $userId, $status_id, $customer_name, $customer_address);
         $stmt->execute();
-        $result = $stmt->get_result();
-        if ($row = $result->fetch_assoc()) {
-            $price = $row['p_price'];
-            $qty = $qtys[$key];
-            $total += $price * $qty;
+        $oid = $stmt->insert_id; // รับ oid ของคำสั่งซื้อที่สร้างขึ้น
+        $stmt->close();
+
+        // บันทึกรายละเอียดคำสั่งซื้อ
+        if (!empty($_POST['pid'])) {
+            $stmt = $conn->prepare("INSERT INTO orders_detail (oid, pid, item, status_id) VALUES (?, ?, ?, ?)");
+            $status_id_detail = 1; // สถานะเริ่มต้นสำหรับรายการสินค้า
+
+            foreach ($_POST['pid'] as $key => $pid) {
+                $item_quantity = isset($_POST['qty'][$key]) ? $_POST['qty'][$key] : 0;
+
+                if ($stmt) {
+                    $stmt->bind_param("iiis", $oid, $pid, $item_quantity, $status_id_detail);
+                    $stmt->execute();
+                }
+            }
+            $stmt->close();
         }
-        $stmt->close();
+
+        // เคลียร์ตะกร้าสินค้า
+        unset($_SESSION['cart']);
+        
+        // แสดงข้อความสำเร็จ
+        echo "<h2>การสั่งซื้อของคุณสำเร็จแล้ว!</h2>";
+        echo "<p>หมายเลขคำสั่งซื้อ: $oid</p>";
+    } else {
+        echo "เกิดข้อผิดพลาดในการสร้างคำสั่งซื้อ";
     }
-
-    // บันทึกคำสั่งซื้อในฐานข้อมูล
-    $stmt = $conn->prepare("INSERT INTO orders (uid, ototal, odate, status_id) VALUES (?, ?, NOW(), 1)");
-    $stmt->bind_param("id", $uid, $total);
-    $stmt->execute();
-    $oid = $stmt->insert_id; // ดึง ID ของคำสั่งซื้อที่เพิ่งสร้างขึ้น
-    $stmt->close();
-
-    // บันทึกรายละเอียดสินค้าในคำสั่งซื้อ
-    foreach ($pids as $key => $pid) {
-        $qty = $qtys[$key];
-        $stmt = $conn->prepare("INSERT INTO order_details (oid, pid, quantity) VALUES (?, ?, ?)");
-        $stmt->bind_param("iii", $oid, $pid, $qty);
-        $stmt->execute();
-        $stmt->close();
-    }
-
-    // อาจจะส่งอีเมลยืนยันการสั่งซื้อหรือการแจ้งเตือนที่นี่
-
-    // แสดงผลการสั่งซื้อสำเร็จ
-    echo "<h1>คำสั่งซื้อสำเร็จ</h1>";
-    echo "<p>หมายเลขคำสั่งซื้อของคุณคือ: <strong>$oid</strong></p>";
-    echo "<p>ยอดรวม: <strong>" . number_format($total, 2) . " บาท</strong></p>";
-    
-    // อาจจะนำไปยังหน้าที่ต้องการหรือหน้าประวัติการสั่งซื้อ
-    // header("Location: order_status.php");
-    // exit();
 } else {
-    // ถ้าไม่ใช่ POST request ให้ไปที่หน้าล็อกอินหรือหน้าที่ต้องการ
-    header("Location: indexlogin.php");
-    exit();
+    header("Location: index.php"); // เปลี่ยนเส้นทางถ้าไม่ใช่การโพสต์
 }
 ?>
