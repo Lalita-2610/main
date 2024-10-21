@@ -94,12 +94,15 @@ try {
     }
 
     // Insert into orders table
-    $sql_order = "INSERT INTO orders (ototal, odate, id, status_id) VALUES (?, NOW(), ?, ?)";
+    $sql_order = "INSERT INTO orders (ototal, odate, id, status_id, customer_name) VALUES (?, NOW(), ?, ?, ?)";
     $stmt_order = $conn->prepare($sql_order);
     if (!$stmt_order) {
         throw new Exception("Error while creating order: " . $conn->error);
     }
-    $stmt_order->bind_param("dii", $total, $user_id, $status_id);
+
+    // กำหนดค่าเริ่มต้นสำหรับ customer_name
+    $customer_name = "unknown"; // หรือสามารถใช้ชื่ออื่นๆ ตามที่ต้องการ
+    $stmt_order->bind_param("diis", $total, $user_id, $status_id, $customer_name);
     if (!$stmt_order->execute()) {
         throw new Exception("Error while creating order: " . $stmt_order->error);
     }
