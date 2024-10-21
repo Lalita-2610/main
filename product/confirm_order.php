@@ -45,15 +45,6 @@ if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_tok
     die('Invalid CSRF token');
 }
 
-// รับข้อมูลลูกค้า
-$customer_name = $_POST['customer_name'];
-$customer_address = $_POST['customer_address'];
-
-// ตรวจสอบข้อมูลลูกค้า
-if (empty($customer_name) || empty($customer_address)) {
-    die("Customer name and address must not be empty.");
-}
-
 $total = 0;
 
 // Begin transaction to ensure atomicity
@@ -103,12 +94,12 @@ try {
     }
 
     // Insert into orders table
-    $sql_order = "INSERT INTO orders (ototal, odate, id, status_id, customer_name, customer_address) VALUES (?, NOW(), ?, ?, ?, ?)";
+    $sql_order = "INSERT INTO orders (ototal, odate, id, status_id) VALUES (?, NOW(), ?, ?)";
     $stmt_order = $conn->prepare($sql_order);
     if (!$stmt_order) {
         throw new Exception("Error while creating order: " . $conn->error);
     }
-    $stmt_order->bind_param("diiss", $total, $user_id, $status_id, $customer_name, $customer_address);
+    $stmt_order->bind_param("dii", $total, $user_id, $status_id);
     if (!$stmt_order->execute()) {
         throw new Exception("Error while creating order: " . $stmt_order->error);
     }
