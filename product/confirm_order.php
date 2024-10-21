@@ -1,11 +1,6 @@
 <?php
 session_start(); // เริ่มต้น session
 
-// เปิดการแสดงข้อผิดพลาด
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 // เชื่อมต่อฐานข้อมูล
 include("connectdb.php");
 
@@ -167,8 +162,13 @@ try {
 } catch (Exception $e) {
     // Rollback transaction in case of error
     $conn->rollback();
-    // Log the error message
+    
+    // Show detailed error message
+    echo "Error: " . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
+
+    // Log the error message for further analysis
     error_log($e->getMessage());
+
     // Show user-friendly error message
     ?>
     <!doctype html>
